@@ -38,6 +38,13 @@ ANSWER_MARKER_RE = re.compile(
     r"(?:is|was|were|would\s+be|:|=)\s*",
     re.IGNORECASE | re.DOTALL,
 )
+CALCULATION_RESULT_RE = re.compile(
+    r"[^=\n]*(?:[/+*]|\s-\s)[^=\n]*=\s*"
+    r"(?P<value>\(?[-+]?\$?\d[\d,]*(?:\.\d+)?%?\)?)"
+    r"(?:\s*(?:usd|dollars?|millions?|billions?|shares?|bps|basis points))?"
+    r"(?=\s*(?:[.,;:]|\n|$))",
+    re.IGNORECASE,
+)
 REFUSAL_PHRASES = (
     "as an ai",
     "cannot provide",
@@ -137,6 +144,12 @@ def extract_answer_numbers(value: Any) -> list[float]:
     marker_matches = list(ANSWER_MARKER_RE.finditer(text))
     if marker_matches:
         return extract_numbers(text[marker_matches[-1].end() :])[:1]
+
+    calculation_matches = list(CALCULATION_RESULT_RE.finditer(text))
+    if calculation_matches:
+        parsed = parse_number_token(calculation_matches[-1].group("value"))
+        if parsed is not None:
+            return [parsed]
 
     numbers = extract_numbers(CONTEXT_YEAR_RE.sub(" ", text))
     return numbers if len(numbers) <= 1 else []

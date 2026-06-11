@@ -65,6 +65,23 @@ class EvaluateResultsTest(unittest.TestCase):
             )
         )
 
+    def test_numeric_answer_uses_final_calculation_span_without_marker(self):
+        self.assertTrue(
+            deterministic_match(
+                24.26,
+                (
+                    "The FY2019 revenue for Activision Blizzard is $6,489 million. "
+                    "The Property, Plant, and Equipment (PP&E) for FY2018 is "
+                    "$282 million and for FY2019 is $253 million. The average PP&E "
+                    "between FY2018 and FY2019 is ($282 million + $253 million) / "
+                    "2 = $267.5 million.\n\nTherefore, the fixed asset turnover "
+                    "ratio for FY2019 is $6,489 million / $267.5 million = 24.26."
+                ),
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+            )
+        )
+
     def test_numeric_answer_requires_unambiguous_span(self):
         self.assertFalse(
             deterministic_match(
