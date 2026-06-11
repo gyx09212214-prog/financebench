@@ -197,26 +197,47 @@ def deterministic_match(
     This deliberately avoids claiming semantic equivalence for free-form text.
     """
 
-    if looks_like_refusal(model_answer):
-        return False
-
     if not is_numeric_answer(gold_answer):
+        if looks_like_refusal(model_answer):
+            return False
         return normalize_text(gold_answer) == normalize_text(model_answer)
 
     expected_numbers = extract_numbers(gold_answer)
     observed_numbers = extract_answer_numbers(model_answer)
 
     if expected_numbers:
-        return any(
-            numbers_match(
+        matched_pairs = [
+            (expected, observed)
+            for expected in expected_numbers
+            for observed in observed_numbers
+            if numbers_match(
                 expected,
                 observed,
                 relative_tolerance=relative_tolerance,
                 absolute_tolerance=absolute_tolerance,
             )
-            for expected in expected_numbers
-            for observed in observed_numbers
-        )
+        ]
+        if not matched_pairs:
+            return False
+
+        if looks_like_refusal(model_answer):
+            return any(
+                numbers_match(
+                    0.0,
+                    expected,
+                    relative_tolerance=relative_tolerance,
+                    absolute_tolerance=absolute_tolerance,
+                )
+                and numbers_match(
+                    0.0,
+                    observed,
+                    relative_tolerance=relative_tolerance,
+                    absolute_tolerance=absolute_tolerance,
+                )
+                for expected, observed in matched_pairs
+            )
+
+        return True
 
     return False
 
