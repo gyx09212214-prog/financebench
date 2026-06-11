@@ -203,7 +203,7 @@ def extract_answer_numbers(
     marker_matches = list(ANSWER_MARKER_RE.finditer(text))
     if marker_matches:
         return extract_numbers(
-            text[marker_matches[-1].end() :],
+            CONTEXT_YEAR_RE.sub(" ", text[marker_matches[-1].end() :]),
             answer_money_scale=answer_money_scale,
         )[:1]
 

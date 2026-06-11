@@ -127,6 +127,19 @@ class EvaluateResultsTest(unittest.TestCase):
             )
         )
 
+    def test_numeric_answer_ignores_context_years_in_explicit_answer_span(self):
+        self.assertTrue(
+            deterministic_match(
+                12645,
+                (
+                    "Therefore, the answer is that Boeing's net property, plant "
+                    "and equipment at the end of FY2018 was $12,645 million."
+                ),
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+            )
+        )
+
     def test_numeric_answer_uses_final_calculation_span_without_marker(self):
         self.assertTrue(
             deterministic_match(
