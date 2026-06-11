@@ -70,6 +70,36 @@ class EvaluateResultsTest(unittest.TestCase):
             )
         )
 
+    def test_percent_answer_preserves_percent_scale(self):
+        self.assertTrue(
+            deterministic_match(
+                1.015,
+                "The final answer is 101.4%.",
+                relative_tolerance=0.01,
+                absolute_tolerance=1e-6,
+            )
+        )
+        self.assertFalse(
+            deterministic_match(
+                1.015,
+                "The final answer is 1.014%.",
+                relative_tolerance=0.01,
+                absolute_tolerance=1e-6,
+            )
+        )
+
+    def test_no_evidence_answer_is_treated_as_refusal(self):
+        answer = "There is no explicit mention of this in the filing. Final answer: 0"
+        self.assertTrue(looks_like_refusal(answer))
+        self.assertFalse(
+            deterministic_match(
+                0,
+                answer,
+                relative_tolerance=0.01,
+                absolute_tolerance=1e-6,
+            )
+        )
+
     def test_explanatory_answer_is_not_treated_as_numeric_only(self):
         answer = "Operating margin decreased by 1.7% due to one-off charges."
         self.assertFalse(is_numeric_answer(answer))

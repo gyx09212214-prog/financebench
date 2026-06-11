@@ -49,8 +49,16 @@ REFUSAL_PHRASES = (
     "i don't have",
     "i do not have",
     "no information",
+    "no explicit mention",
+    "no explicit information",
     "not enough information",
     "not provided",
+    "does not explicitly mention",
+    "doesn't explicitly mention",
+    "does not explicitly outline",
+    "doesn't explicitly outline",
+    "does not explicitly state",
+    "doesn't explicitly state",
     "recommend checking",
     "unable to",
 )
@@ -77,12 +85,16 @@ def parse_number_token(token: str) -> float | None:
     text = token.strip()
     negative = text.startswith("(") and text.endswith(")")
     text = text.strip("()")
+    is_percent = "%" in text
     text = text.replace("$", "").replace(",", "").replace("%", "")
 
     try:
         value = float(text)
     except ValueError:
         return None
+
+    if is_percent:
+        value /= 100.0
 
     return -value if negative else value
 
