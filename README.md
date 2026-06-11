@@ -63,6 +63,27 @@ In addition, we provide the human-annotated model completions of the evaluated m
 
 ---
 
+**Evaluating result files:**
+
+The result files in `/results/` can be summarized with the dependency-free
+evaluation script:
+
+```bash
+python scripts/evaluate_results.py results/gpt-4_closedBook.jsonl
+python scripts/evaluate_results.py "results/*.jsonl"
+```
+
+The script reports the human labels included in the result files and a
+deterministic baseline match rate. Gold answers that are pure numeric answers
+are matched against numbers found in the model answer using a configurable
+tolerance, while free-form text answers use exact normalized string matching.
+
+Prediction files from new FinanceBench runs can use the same format as the
+provided result files, or include `answer` plus one of `model_answer`,
+`prediction`, `predicted_answer`, or `response`.
+
+---
+
 **Citation:** If you use our open-source dataset or refer to our result, please use the following citation:
 ```latex
 @misc{islam2023financebench,
