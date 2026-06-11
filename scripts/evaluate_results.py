@@ -106,6 +106,13 @@ class FileSummary:
     labels: Counter[str]
 
 
+@dataclass(frozen=True)
+class NumberCandidate:
+    value: float
+    is_percent: bool = False
+    unit: str | None = None
+
+
 def normalize_text(value: Any) -> str:
     """Return a compact, case-insensitive representation for exact matching."""
 
@@ -126,6 +133,15 @@ def infer_answer_money_scale(question: Any) -> str:
     return "millions"
 
 
+def expects_money_answer(question: Any, gold_answer: Any) -> bool:
+    text = normalize_text(question)
+    if MONEY_SCALE_RE.search(text) or "usd" in text or "dollar" in text:
+        return True
+
+    gold_text = normalize_text(gold_answer)
+    return "$" in str(gold_answer) or bool(MONEY_SCALE_RE.search(gold_text))
+
+
 def magnitude_multiplier(
     unit: str | None,
     *,
@@ -144,13 +160,13 @@ def magnitude_multiplier(
     return 1.0
 
 
-def parse_number_token(
+def parse_number_candidate(
     token: str,
     unit: str | None = None,
     *,
     answer_money_scale: str = "millions",
-) -> float | None:
-    """Parse a currency/percent/parenthesized number token into a float."""
+) -> NumberCandidate | None:
+    """Parse a currency/percent/parenthesized number token with unit metadata."""
 
     text = token.strip()
     negative = text.startswith("(") and text.endswith(")")
@@ -168,29 +184,68 @@ def parse_number_token(
 
     value *= magnitude_multiplier(unit, answer_money_scale=answer_money_scale)
 
-    return -value if negative else value
+    if negative:
+        value = -value
+
+    return NumberCandidate(
+        value=value,
+        is_percent=is_percent,
+        unit=normalize_text(unit) if unit else None,
+    )
 
 
-def extract_numbers(value: Any, *, answer_money_scale: str = "millions") -> list[float]:
-    """Extract numeric tokens from strings or return numeric values directly."""
+def parse_number_token(
+    token: str,
+    unit: str | None = None,
+    *,
+    answer_money_scale: str = "millions",
+) -> float | None:
+    """Parse a currency/percent/parenthesized number token into a float."""
+
+    candidate = parse_number_candidate(
+        token,
+        unit,
+        answer_money_scale=answer_money_scale,
+    )
+    return candidate.value if candidate else None
+
+
+def extract_number_candidates(
+    value: Any,
+    *,
+    answer_money_scale: str = "millions",
+) -> list[NumberCandidate]:
+    """Extract numeric tokens with unit metadata."""
 
     if isinstance(value, bool):
         return []
     if isinstance(value, (int, float)):
         if math.isfinite(float(value)):
-            return [float(value)]
+            return [NumberCandidate(float(value))]
         return []
 
-    numbers: list[float] = []
+    candidates: list[NumberCandidate] = []
     for match in NUMBER_RE.finditer(str(value)):
-        parsed = parse_number_token(
+        parsed = parse_number_candidate(
             match.group("number"),
             match.group("unit"),
             answer_money_scale=answer_money_scale,
         )
         if parsed is not None:
-            numbers.append(parsed)
-    return numbers
+            candidates.append(parsed)
+    return candidates
+
+
+def extract_numbers(value: Any, *, answer_money_scale: str = "millions") -> list[float]:
+    """Extract numeric tokens from strings or return numeric values directly."""
+
+    return [
+        candidate.value
+        for candidate in extract_number_candidates(
+            value,
+            answer_money_scale=answer_money_scale,
+        )
+    ]
 
 
 def strip_filing_context(value: str) -> str:
@@ -224,15 +279,15 @@ def strip_temporal_context(
     return text
 
 
-def extract_answer_numbers(
+def extract_answer_number_candidates(
     value: Any,
     *,
     answer_money_scale: str = "millions",
-) -> list[float]:
-    """Extract numbers that are likely to be the answer, not copied context."""
+) -> list[NumberCandidate]:
+    """Extract answer-like numeric candidates, not copied context."""
 
     if not isinstance(value, str):
-        return extract_numbers(value, answer_money_scale=answer_money_scale)
+        return extract_number_candidates(value, answer_money_scale=answer_money_scale)
 
     text = strip_filing_context(value)
     if not text:
@@ -240,7 +295,7 @@ def extract_answer_numbers(
 
     marker_matches = list(ANSWER_MARKER_RE.finditer(text))
     if marker_matches:
-        return extract_numbers(
+        return extract_number_candidates(
             strip_temporal_context(
                 text[marker_matches[-1].end() :],
                 answer_money_scale=answer_money_scale,
@@ -250,7 +305,7 @@ def extract_answer_numbers(
 
     calculation_matches = list(CALCULATION_RESULT_RE.finditer(text))
     if calculation_matches:
-        parsed = parse_number_token(
+        parsed = parse_number_candidate(
             calculation_matches[-1].group("value"),
             calculation_matches[-1].group("unit"),
             answer_money_scale=answer_money_scale,
@@ -258,11 +313,27 @@ def extract_answer_numbers(
         if parsed is not None:
             return [parsed]
 
-    numbers = extract_numbers(
+    candidates = extract_number_candidates(
         strip_temporal_context(text, answer_money_scale=answer_money_scale),
         answer_money_scale=answer_money_scale,
     )
-    return numbers if len(numbers) <= 1 else []
+    return candidates if len(candidates) <= 1 else []
+
+
+def extract_answer_numbers(
+    value: Any,
+    *,
+    answer_money_scale: str = "millions",
+) -> list[float]:
+    """Extract numbers that are likely to be the answer, not copied context."""
+
+    return [
+        candidate.value
+        for candidate in extract_answer_number_candidates(
+            value,
+            answer_money_scale=answer_money_scale,
+        )
+    ]
 
 
 def is_numeric_answer(value: Any) -> bool:
@@ -291,6 +362,30 @@ def numbers_match(
         rel_tol=relative_tolerance,
         abs_tol=absolute_tolerance,
     )
+
+
+def is_money_unit(unit: str | None) -> bool:
+    return bool(unit) and any(
+        marker in unit
+        for marker in ("usd", "dollar", "million", "billion")
+    )
+
+
+def has_compatible_unit(
+    expected: NumberCandidate,
+    observed: NumberCandidate,
+    *,
+    answer_expects_money: bool,
+) -> bool:
+    if not answer_expects_money:
+        return True
+
+    if observed.is_percent:
+        return False
+    if observed.unit and not is_money_unit(observed.unit):
+        return False
+
+    return True
 
 
 def rounded_billion_tolerance(
@@ -329,15 +424,16 @@ def deterministic_match(
         return normalize_text(gold_answer) == normalize_text(model_answer)
 
     answer_money_scale = infer_answer_money_scale(question)
+    answer_expects_money = expects_money_answer(question, gold_answer)
     effective_absolute_tolerance = max(
         absolute_tolerance,
         rounded_billion_tolerance(gold_answer, answer_money_scale) or 0.0,
     )
-    expected_numbers = extract_numbers(
+    expected_numbers = extract_number_candidates(
         gold_answer,
         answer_money_scale=answer_money_scale,
     )
-    observed_numbers = extract_answer_numbers(
+    observed_numbers = extract_answer_number_candidates(
         model_answer,
         answer_money_scale=answer_money_scale,
     )
@@ -348,10 +444,15 @@ def deterministic_match(
             for expected in expected_numbers
             for observed in observed_numbers
             if numbers_match(
-                expected,
-                observed,
+                expected.value,
+                observed.value,
                 relative_tolerance=relative_tolerance,
                 absolute_tolerance=effective_absolute_tolerance,
+            )
+            and has_compatible_unit(
+                expected,
+                observed,
+                answer_expects_money=answer_expects_money,
             )
         ]
         if not matched_pairs:
@@ -361,13 +462,13 @@ def deterministic_match(
             return any(
                 numbers_match(
                     0.0,
-                    expected,
+                    expected.value,
                     relative_tolerance=relative_tolerance,
                     absolute_tolerance=effective_absolute_tolerance,
                 )
                 and numbers_match(
                     0.0,
-                    observed,
+                    observed.value,
                     relative_tolerance=relative_tolerance,
                     absolute_tolerance=effective_absolute_tolerance,
                 )

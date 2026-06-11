@@ -236,6 +236,39 @@ class EvaluateResultsTest(unittest.TestCase):
             )
         )
 
+    def test_money_answer_rejects_percentage_observed_value(self):
+        question = (
+            "How much (in USD billions) did American Water Works pay out "
+            "in cash dividends for FY2020?"
+        )
+        self.assertFalse(
+            deterministic_match(
+                0.4,
+                "Approximately 40% of the regulatory liability balance was collected.",
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+                question=question,
+            )
+        )
+        self.assertTrue(
+            deterministic_match(
+                0.4,
+                "Final answer: $0.4 billion.",
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+                question=question,
+            )
+        )
+        self.assertTrue(
+            deterministic_match(
+                0.4,
+                "Final answer: 0.4.",
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+                question=question,
+            )
+        )
+
     def test_default_tolerance_rejects_distinct_rounded_percentages(self):
         args = parse_args(["results.jsonl"])
 
