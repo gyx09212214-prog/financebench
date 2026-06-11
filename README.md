@@ -75,12 +75,13 @@ python scripts/evaluate_results.py "results/*.jsonl"
 
 The script reports the human labels included in the result files and a
 deterministic baseline match rate. Gold answers that are pure numeric answers
-are matched against numbers found in the model answer using a configurable
-tolerance, while free-form text answers use exact normalized string matching.
+are matched against an explicit answer span, or an unambiguous one-number model
+answer, using a configurable tolerance; copied filing context blocks are
+ignored. Free-form text answers use exact normalized string matching.
 
 Prediction files from new FinanceBench runs can use the same format as the
 provided result files, or include `answer` plus one of `model_answer`,
-`prediction`, `predicted_answer`, or `response`.
+`final_answer`, `prediction`, `predicted_answer`, or `response`.
 
 ---
 

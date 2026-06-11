@@ -19,6 +19,47 @@ class EvaluateResultsTest(unittest.TestCase):
             )
         )
 
+    def test_numeric_answer_does_not_match_copied_filing_context(self):
+        self.assertFalse(
+            deterministic_match(
+                59268,
+                "[START OF FILING]\nTOTAL ASSETS\n$59,268\n[END OF FILING]",
+                relative_tolerance=0.01,
+                absolute_tolerance=1e-6,
+            )
+        )
+
+    def test_numeric_answer_uses_explicit_answer_span(self):
+        self.assertFalse(
+            deterministic_match(
+                59268,
+                (
+                    "[START OF FILING]\nTOTAL ASSETS\n$59,268\n[END OF FILING]\n"
+                    "Final answer: $55,556"
+                ),
+                relative_tolerance=0.01,
+                absolute_tolerance=1e-6,
+            )
+        )
+        self.assertTrue(
+            deterministic_match(
+                59268,
+                "The filing lists $55,556 for 2020. Final answer: $59,268",
+                relative_tolerance=0.01,
+                absolute_tolerance=1e-6,
+            )
+        )
+
+    def test_numeric_answer_requires_unambiguous_span(self):
+        self.assertFalse(
+            deterministic_match(
+                59268,
+                "The filing lists $59,268 in 2021 and $55,556 in 2020.",
+                relative_tolerance=0.01,
+                absolute_tolerance=1e-6,
+            )
+        )
+
     def test_refusal_does_not_match_even_when_it_mentions_numbers(self):
         self.assertFalse(
             deterministic_match(

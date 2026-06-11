@@ -26,6 +26,18 @@ NUMERIC_ANSWER_RE = re.compile(
     r"(?:\s*(?:usd|dollars?|millions?|billions?|shares?|bps|basis points))?$",
     re.IGNORECASE,
 )
+FILING_BLOCK_RE = re.compile(
+    r"\[START OF FILING\].*?\[END OF FILING\]",
+    re.IGNORECASE | re.DOTALL,
+)
+FILING_START_RE = re.compile(r"\[START OF FILING\].*$", re.IGNORECASE | re.DOTALL)
+FILING_END_RE = re.compile(r"^.*?\[END OF FILING\]", re.IGNORECASE | re.DOTALL)
+CONTEXT_YEAR_RE = re.compile(r"\b(?:FY|fiscal year)\s*\d{4}\b", re.IGNORECASE)
+ANSWER_MARKER_RE = re.compile(
+    r"(?:^|\n|\b)(?:final\s+(?:answer|result)|answer|result)\s*"
+    r"(?:is|was|were|would\s+be|:|=)\s*",
+    re.IGNORECASE | re.DOTALL,
+)
 REFUSAL_PHRASES = (
     "as an ai",
     "cannot provide",
@@ -93,6 +105,31 @@ def extract_numbers(value: Any) -> list[float]:
     return numbers
 
 
+def strip_filing_context(value: str) -> str:
+    text = FILING_BLOCK_RE.sub(" ", value)
+    text = FILING_START_RE.sub(" ", text)
+    text = FILING_END_RE.sub(" ", text)
+    return text.strip()
+
+
+def extract_answer_numbers(value: Any) -> list[float]:
+    """Extract numbers that are likely to be the answer, not copied context."""
+
+    if not isinstance(value, str):
+        return extract_numbers(value)
+
+    text = strip_filing_context(value)
+    if not text:
+        return []
+
+    marker_matches = list(ANSWER_MARKER_RE.finditer(text))
+    if marker_matches:
+        return extract_numbers(text[marker_matches[-1].end() :])[:1]
+
+    numbers = extract_numbers(CONTEXT_YEAR_RE.sub(" ", text))
+    return numbers if len(numbers) <= 1 else []
+
+
 def is_numeric_answer(value: Any) -> bool:
     if isinstance(value, bool):
         return False
@@ -130,7 +167,7 @@ def deterministic_match(
 ) -> bool:
     """Score a response without an LLM judge.
 
-    Numeric gold answers are matched against any number in the model answer.
+    Numeric gold answers are matched against the response's answer span.
     Non-numeric gold answers fall back to exact normalized string equality.
     This deliberately avoids claiming semantic equivalence for free-form text.
     """
@@ -142,7 +179,7 @@ def deterministic_match(
         return normalize_text(gold_answer) == normalize_text(model_answer)
 
     expected_numbers = extract_numbers(gold_answer)
-    observed_numbers = extract_numbers(model_answer)
+    observed_numbers = extract_answer_numbers(model_answer)
 
     if expected_numbers:
         return any(
@@ -182,10 +219,18 @@ def get_gold_answer(row: dict[str, Any]) -> Any:
 
 
 def get_model_answer(row: dict[str, Any]) -> Any:
-    for field in ("model_answer", "prediction", "predicted_answer", "response"):
+    for field in (
+        "final_answer",
+        "model_answer",
+        "prediction",
+        "predicted_answer",
+        "response",
+    ):
         if field in row:
             return row[field]
-    raise KeyError("missing model_answer, prediction, predicted_answer, or response")
+    raise KeyError(
+        "missing final_answer, model_answer, prediction, predicted_answer, or response"
+    )
 
 
 def summarize_file(
