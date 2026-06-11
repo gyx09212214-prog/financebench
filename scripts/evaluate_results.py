@@ -46,6 +46,19 @@ FILING_START_RE = re.compile(r"\[START OF FILING\].*$", re.IGNORECASE | re.DOTAL
 FILING_END_RE = re.compile(r"^.*?\[END OF FILING\]", re.IGNORECASE | re.DOTALL)
 CONTEXT_YEAR_RE = re.compile(r"\b(?:FY|fiscal year)\s*\d{2,4}\b", re.IGNORECASE)
 BARE_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
+MONTH_NAME_PATTERN = (
+    r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+    r"jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
+    r"nov(?:ember)?|dec(?:ember)?)"
+)
+CONTEXT_DATE_RE = re.compile(
+    rf"\b{MONTH_NAME_PATTERN}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?[,]?\s+"
+    r"(?:19|20)\d{2}\b"
+    rf"|\b\d{{1,2}}(?:st|nd|rd|th)?\s+{MONTH_NAME_PATTERN}\.?,?\s+"
+    r"(?:19|20)\d{2}\b"
+    r"|\b\d{1,2}[/-]\d{1,2}[/-](?:\d{2}|\d{4})\b",
+    re.IGNORECASE,
+)
 ANSWER_MARKER_RE = re.compile(
     r"(?:^|\n|\b)(?:final\s+(?:answer|result)|answer|result)\s*"
     r"(?:is|was|were|would\s+be|:|=)\s*",
@@ -187,14 +200,19 @@ def strip_filing_context(value: str) -> str:
     return text.strip()
 
 
-def strip_context_years(
+def strip_temporal_context(
     value: str,
     *,
     answer_money_scale: str = "millions",
 ) -> str:
-    """Remove fiscal-year context when another numeric answer candidate remains."""
+    """Remove date/year context when another numeric answer candidate remains."""
 
-    text = CONTEXT_YEAR_RE.sub(" ", value)
+    text = value
+    without_full_dates = CONTEXT_DATE_RE.sub(" ", text)
+    if extract_numbers(without_full_dates, answer_money_scale=answer_money_scale):
+        text = without_full_dates
+
+    text = CONTEXT_YEAR_RE.sub(" ", text)
     numbers = extract_numbers(text, answer_money_scale=answer_money_scale)
     if len(numbers) <= 1:
         return text
@@ -223,7 +241,7 @@ def extract_answer_numbers(
     marker_matches = list(ANSWER_MARKER_RE.finditer(text))
     if marker_matches:
         return extract_numbers(
-            strip_context_years(
+            strip_temporal_context(
                 text[marker_matches[-1].end() :],
                 answer_money_scale=answer_money_scale,
             ),
@@ -241,7 +259,7 @@ def extract_answer_numbers(
             return [parsed]
 
     numbers = extract_numbers(
-        strip_context_years(text, answer_money_scale=answer_money_scale),
+        strip_temporal_context(text, answer_money_scale=answer_money_scale),
         answer_money_scale=answer_money_scale,
     )
     return numbers if len(numbers) <= 1 else []

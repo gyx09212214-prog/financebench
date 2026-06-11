@@ -154,6 +154,18 @@ class EvaluateResultsTest(unittest.TestCase):
         )
         self.assertTrue(
             deterministic_match(
+                11588,
+                (
+                    "Amazon's FY2019 net income attributable to shareholders "
+                    "is $11,588 million. This figure is listed for the year "
+                    "ended December 31, 2019."
+                ),
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+            )
+        )
+        self.assertTrue(
+            deterministic_match(
                 1577,
                 "Final answer: for 2018, the amount is $1,577 million.",
                 relative_tolerance=0.001,
