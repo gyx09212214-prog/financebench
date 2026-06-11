@@ -140,6 +140,35 @@ class EvaluateResultsTest(unittest.TestCase):
             )
         )
 
+    def test_numeric_answer_ignores_bare_context_years_when_value_remains(self):
+        self.assertTrue(
+            deterministic_match(
+                1577,
+                (
+                    "According to the provided information, the amount for "
+                    "2018 is $1,577 million USD."
+                ),
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+            )
+        )
+        self.assertTrue(
+            deterministic_match(
+                1577,
+                "Final answer: for 2018, the amount is $1,577 million.",
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+            )
+        )
+        self.assertTrue(
+            deterministic_match(
+                2018,
+                "Final answer: 2018",
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+            )
+        )
+
     def test_numeric_answer_uses_final_calculation_span_without_marker(self):
         self.assertTrue(
             deterministic_match(

@@ -44,7 +44,8 @@ FILING_BLOCK_RE = re.compile(
 )
 FILING_START_RE = re.compile(r"\[START OF FILING\].*$", re.IGNORECASE | re.DOTALL)
 FILING_END_RE = re.compile(r"^.*?\[END OF FILING\]", re.IGNORECASE | re.DOTALL)
-CONTEXT_YEAR_RE = re.compile(r"\b(?:FY|fiscal year)\s*\d{4}\b", re.IGNORECASE)
+CONTEXT_YEAR_RE = re.compile(r"\b(?:FY|fiscal year)\s*\d{2,4}\b", re.IGNORECASE)
+BARE_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 ANSWER_MARKER_RE = re.compile(
     r"(?:^|\n|\b)(?:final\s+(?:answer|result)|answer|result)\s*"
     r"(?:is|was|were|would\s+be|:|=)\s*",
@@ -186,6 +187,25 @@ def strip_filing_context(value: str) -> str:
     return text.strip()
 
 
+def strip_context_years(
+    value: str,
+    *,
+    answer_money_scale: str = "millions",
+) -> str:
+    """Remove fiscal-year context when another numeric answer candidate remains."""
+
+    text = CONTEXT_YEAR_RE.sub(" ", value)
+    numbers = extract_numbers(text, answer_money_scale=answer_money_scale)
+    if len(numbers) <= 1:
+        return text
+
+    without_bare_years = BARE_YEAR_RE.sub(" ", text)
+    if extract_numbers(without_bare_years, answer_money_scale=answer_money_scale):
+        return without_bare_years
+
+    return text
+
+
 def extract_answer_numbers(
     value: Any,
     *,
@@ -203,7 +223,10 @@ def extract_answer_numbers(
     marker_matches = list(ANSWER_MARKER_RE.finditer(text))
     if marker_matches:
         return extract_numbers(
-            CONTEXT_YEAR_RE.sub(" ", text[marker_matches[-1].end() :]),
+            strip_context_years(
+                text[marker_matches[-1].end() :],
+                answer_money_scale=answer_money_scale,
+            ),
             answer_money_scale=answer_money_scale,
         )[:1]
 
@@ -218,7 +241,7 @@ def extract_answer_numbers(
             return [parsed]
 
     numbers = extract_numbers(
-        CONTEXT_YEAR_RE.sub(" ", text),
+        strip_context_years(text, answer_money_scale=answer_money_scale),
         answer_money_scale=answer_money_scale,
     )
     return numbers if len(numbers) <= 1 else []
