@@ -20,10 +20,18 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-NUMBER_RE = re.compile(r"(?<![A-Za-z_])\(?[-+]?\$?\d[\d,]*(?:\.\d+)?%?\)?(?![A-Za-z_])")
+UNIT_PATTERN = (
+    r"(?:usd(?:\s+(?:millions?|billions?))?|dollars?|millions?|billions?|"
+    r"shares?|bps|basis points)"
+)
+NUMBER_RE = re.compile(
+    rf"(?<![A-Za-z_])(?P<number>\(?[-+]?\$?\d[\d,]*(?:\.\d+)?%?\)?)(?![A-Za-z_])"
+    rf"(?:\s*(?P<unit>{UNIT_PATTERN}))?",
+    re.IGNORECASE,
+)
 NUMERIC_ANSWER_RE = re.compile(
     r"^\(?[-+]?\$?\d[\d,]*(?:\.\d+)?%?\)?"
-    r"(?:\s*(?:usd|dollars?|millions?|billions?|shares?|bps|basis points))?$",
+    rf"(?:\s*{UNIT_PATTERN})?$",
     re.IGNORECASE,
 )
 FILING_BLOCK_RE = re.compile(
@@ -41,7 +49,7 @@ ANSWER_MARKER_RE = re.compile(
 CALCULATION_RESULT_RE = re.compile(
     r"[^=\n]*(?:[/+*]|\s-\s)[^=\n]*=\s*"
     r"(?P<value>\(?[-+]?\$?\d[\d,]*(?:\.\d+)?%?\)?)"
-    r"(?:\s*(?:usd|dollars?|millions?|billions?|shares?|bps|basis points))?"
+    rf"(?:\s*(?P<unit>{UNIT_PATTERN}))?"
     r"(?=\s*(?:[.,;:]|\n|$))",
     re.IGNORECASE,
 )
@@ -86,7 +94,19 @@ def normalize_text(value: Any) -> str:
     return " ".join(str(value).strip().lower().split())
 
 
-def parse_number_token(token: str) -> float | None:
+def magnitude_multiplier(unit: str | None) -> float:
+    """Return a multiplier that normalizes common money magnitudes to millions."""
+
+    if not unit:
+        return 1.0
+
+    normalized_unit = normalize_text(unit)
+    if "billion" in normalized_unit:
+        return 1000.0
+    return 1.0
+
+
+def parse_number_token(token: str, unit: str | None = None) -> float | None:
     """Parse a currency/percent/parenthesized number token into a float."""
 
     text = token.strip()
@@ -103,6 +123,8 @@ def parse_number_token(token: str) -> float | None:
     if is_percent:
         value /= 100.0
 
+    value *= magnitude_multiplier(unit)
+
     return -value if negative else value
 
 
@@ -117,8 +139,8 @@ def extract_numbers(value: Any) -> list[float]:
         return []
 
     numbers: list[float] = []
-    for token in NUMBER_RE.findall(str(value)):
-        parsed = parse_number_token(token)
+    for match in NUMBER_RE.finditer(str(value)):
+        parsed = parse_number_token(match.group("number"), match.group("unit"))
         if parsed is not None:
             numbers.append(parsed)
     return numbers
@@ -147,7 +169,10 @@ def extract_answer_numbers(value: Any) -> list[float]:
 
     calculation_matches = list(CALCULATION_RESULT_RE.finditer(text))
     if calculation_matches:
-        parsed = parse_number_token(calculation_matches[-1].group("value"))
+        parsed = parse_number_token(
+            calculation_matches[-1].group("value"),
+            calculation_matches[-1].group("unit"),
+        )
         if parsed is not None:
             return [parsed]
 

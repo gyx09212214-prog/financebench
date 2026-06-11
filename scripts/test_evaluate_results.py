@@ -24,6 +24,27 @@ class EvaluateResultsTest(unittest.TestCase):
             )
         )
 
+    def test_numeric_answer_normalizes_billion_unit_to_millions(self):
+        self.assertTrue(
+            deterministic_match(
+                5818,
+                (
+                    "Lockheed Martin's FY2021 net working capital was "
+                    "$19.815 billion - $13.997 billion = $5.818 billion."
+                ),
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+            )
+        )
+        self.assertFalse(
+            deterministic_match(
+                5818,
+                "Final answer: $5,818 billion.",
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+            )
+        )
+
     def test_numeric_answer_ignores_alphanumeric_identifiers(self):
         self.assertTrue(
             deterministic_match(
