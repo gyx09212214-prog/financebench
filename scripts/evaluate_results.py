@@ -65,8 +65,8 @@ ANSWER_MARKER_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 CALCULATION_RESULT_RE = re.compile(
-    r"[^=\n]*(?:[/+*]|\s-\s)[^=\n]*=\s*"
-    r"(?P<value>\(?[-+]?\$?\d[\d,]*(?:\.\d+)?%?\)?)"
+    r"[^=\n]*(?:[/+*]|\s-\s)[^=\n]*(?:\n\s*)?=\s*"
+    r"(?P<value>\(?[-+]?\$?\d[\d,]*(?:\.\d+)?%?\)?)(?!,\d)"
     rf"(?:\s*(?P<unit>{UNIT_PATTERN}))?"
     r"(?=\s*(?:[.,;:]|\n|$))",
     re.IGNORECASE,

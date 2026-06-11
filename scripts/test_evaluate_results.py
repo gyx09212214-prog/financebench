@@ -198,6 +198,23 @@ class EvaluateResultsTest(unittest.TestCase):
             )
         )
 
+    def test_numeric_answer_uses_multiline_final_calculation_span(self):
+        self.assertTrue(
+            deterministic_match(
+                24.26,
+                (
+                    "Average = ($282 million + $253 million) / 2 = $267.5 million.\n\n"
+                    "Fixed Asset Turnover Ratio = Revenue / Average PP&E \n"
+                    "           = $6,489 million / $267.5 million\n"
+                    "           = 24.26\n\n"
+                    "Rounding to two decimal places, the FY2019 fixed asset "
+                    "turnover ratio for Activision Blizzard is 24.26."
+                ),
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+            )
+        )
+
     def test_numeric_answer_requires_unambiguous_span(self):
         self.assertFalse(
             deterministic_match(
