@@ -45,6 +45,47 @@ class EvaluateResultsTest(unittest.TestCase):
             )
         )
 
+    def test_numeric_answer_preserves_billion_question_scale(self):
+        self.assertTrue(
+            deterministic_match(
+                8.7,
+                (
+                    "The year end FY2018 net PP&E (Property, Plant, and "
+                    "Equipment) for 3M is $8.738 billion."
+                ),
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+                question=(
+                    "What is the year end FY2018 net PPNE for 3M? "
+                    "Answer in USD billions."
+                ),
+            )
+        )
+        self.assertTrue(
+            deterministic_match(
+                4.6,
+                "The FY2021 capital expenditure amount for PepsiCo is $4.625 billion.",
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+                question=(
+                    "What is the FY2021 capital expenditure amount "
+                    "(in USD billions) for PepsiCo?"
+                ),
+            )
+        )
+        self.assertTrue(
+            deterministic_match(
+                4.6,
+                "The FY2021 capital expenditure amount for PepsiCo is $4,625 million.",
+                relative_tolerance=0.001,
+                absolute_tolerance=1e-6,
+                question=(
+                    "What is the FY2021 capital expenditure amount "
+                    "(in USD billions) for PepsiCo?"
+                ),
+            )
+        )
+
     def test_numeric_answer_ignores_alphanumeric_identifiers(self):
         self.assertTrue(
             deterministic_match(

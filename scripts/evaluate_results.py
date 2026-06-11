@@ -24,6 +24,10 @@ UNIT_PATTERN = (
     r"(?:usd(?:\s+(?:millions?|billions?))?|dollars?|millions?|billions?|"
     r"shares?|bps|basis points)"
 )
+MONEY_SCALE_RE = re.compile(
+    r"\b(?:usd\s+)?(?P<scale>millions?|billions?)\b",
+    re.IGNORECASE,
+)
 NUMBER_RE = re.compile(
     rf"(?<![A-Za-z_])(?P<number>\(?[-+]?\$?\d[\d,]*(?:\.\d+)?%?\)?)(?![A-Za-z_])"
     rf"(?:\s*(?P<unit>{UNIT_PATTERN}))?",
@@ -94,19 +98,44 @@ def normalize_text(value: Any) -> str:
     return " ".join(str(value).strip().lower().split())
 
 
-def magnitude_multiplier(unit: str | None) -> float:
-    """Return a multiplier that normalizes common money magnitudes to millions."""
+def infer_answer_money_scale(question: Any) -> str:
+    """Infer whether numeric gold answers are expressed in millions or billions."""
+
+    text = normalize_text(question)
+    matches = list(MONEY_SCALE_RE.finditer(text))
+    if not matches:
+        return "millions"
+
+    scale = matches[-1].group("scale")
+    if scale.lower().startswith("billion"):
+        return "billions"
+    return "millions"
+
+
+def magnitude_multiplier(
+    unit: str | None,
+    *,
+    answer_money_scale: str = "millions",
+) -> float:
+    """Return a multiplier that normalizes common money magnitudes to the answer scale."""
 
     if not unit:
         return 1.0
 
     normalized_unit = normalize_text(unit)
     if "billion" in normalized_unit:
-        return 1000.0
+        return 1.0 if answer_money_scale == "billions" else 1000.0
+    if "million" in normalized_unit:
+        return 0.001 if answer_money_scale == "billions" else 1.0
     return 1.0
 
 
-def parse_number_token(token: str, unit: str | None = None) -> float | None:
+def parse_number_token(
+    token: str,
+    unit: str | None = None,
+    *,
+    answer_money_scale: str = "millions",
+) -> float | None:
     """Parse a currency/percent/parenthesized number token into a float."""
 
     text = token.strip()
@@ -123,12 +152,12 @@ def parse_number_token(token: str, unit: str | None = None) -> float | None:
     if is_percent:
         value /= 100.0
 
-    value *= magnitude_multiplier(unit)
+    value *= magnitude_multiplier(unit, answer_money_scale=answer_money_scale)
 
     return -value if negative else value
 
 
-def extract_numbers(value: Any) -> list[float]:
+def extract_numbers(value: Any, *, answer_money_scale: str = "millions") -> list[float]:
     """Extract numeric tokens from strings or return numeric values directly."""
 
     if isinstance(value, bool):
@@ -140,7 +169,11 @@ def extract_numbers(value: Any) -> list[float]:
 
     numbers: list[float] = []
     for match in NUMBER_RE.finditer(str(value)):
-        parsed = parse_number_token(match.group("number"), match.group("unit"))
+        parsed = parse_number_token(
+            match.group("number"),
+            match.group("unit"),
+            answer_money_scale=answer_money_scale,
+        )
         if parsed is not None:
             numbers.append(parsed)
     return numbers
@@ -153,11 +186,15 @@ def strip_filing_context(value: str) -> str:
     return text.strip()
 
 
-def extract_answer_numbers(value: Any) -> list[float]:
+def extract_answer_numbers(
+    value: Any,
+    *,
+    answer_money_scale: str = "millions",
+) -> list[float]:
     """Extract numbers that are likely to be the answer, not copied context."""
 
     if not isinstance(value, str):
-        return extract_numbers(value)
+        return extract_numbers(value, answer_money_scale=answer_money_scale)
 
     text = strip_filing_context(value)
     if not text:
@@ -165,18 +202,25 @@ def extract_answer_numbers(value: Any) -> list[float]:
 
     marker_matches = list(ANSWER_MARKER_RE.finditer(text))
     if marker_matches:
-        return extract_numbers(text[marker_matches[-1].end() :])[:1]
+        return extract_numbers(
+            text[marker_matches[-1].end() :],
+            answer_money_scale=answer_money_scale,
+        )[:1]
 
     calculation_matches = list(CALCULATION_RESULT_RE.finditer(text))
     if calculation_matches:
         parsed = parse_number_token(
             calculation_matches[-1].group("value"),
             calculation_matches[-1].group("unit"),
+            answer_money_scale=answer_money_scale,
         )
         if parsed is not None:
             return [parsed]
 
-    numbers = extract_numbers(CONTEXT_YEAR_RE.sub(" ", text))
+    numbers = extract_numbers(
+        CONTEXT_YEAR_RE.sub(" ", text),
+        answer_money_scale=answer_money_scale,
+    )
     return numbers if len(numbers) <= 1 else []
 
 
@@ -208,12 +252,28 @@ def numbers_match(
     )
 
 
+def rounded_billion_tolerance(
+    gold_answer: Any,
+    answer_money_scale: str,
+) -> float | None:
+    if answer_money_scale != "billions":
+        return None
+
+    text = str(gold_answer).strip()
+    match = re.search(r"[-+]?\d+\.(?P<decimals>\d+)", text)
+    if not match:
+        return None
+
+    return 0.5 * 10 ** (-len(match.group("decimals")))
+
+
 def deterministic_match(
     gold_answer: Any,
     model_answer: Any,
     *,
     relative_tolerance: float,
     absolute_tolerance: float,
+    question: Any = None,
 ) -> bool:
     """Score a response without an LLM judge.
 
@@ -227,8 +287,19 @@ def deterministic_match(
             return False
         return normalize_text(gold_answer) == normalize_text(model_answer)
 
-    expected_numbers = extract_numbers(gold_answer)
-    observed_numbers = extract_answer_numbers(model_answer)
+    answer_money_scale = infer_answer_money_scale(question)
+    effective_absolute_tolerance = max(
+        absolute_tolerance,
+        rounded_billion_tolerance(gold_answer, answer_money_scale) or 0.0,
+    )
+    expected_numbers = extract_numbers(
+        gold_answer,
+        answer_money_scale=answer_money_scale,
+    )
+    observed_numbers = extract_answer_numbers(
+        model_answer,
+        answer_money_scale=answer_money_scale,
+    )
 
     if expected_numbers:
         matched_pairs = [
@@ -239,7 +310,7 @@ def deterministic_match(
                 expected,
                 observed,
                 relative_tolerance=relative_tolerance,
-                absolute_tolerance=absolute_tolerance,
+                absolute_tolerance=effective_absolute_tolerance,
             )
         ]
         if not matched_pairs:
@@ -251,13 +322,13 @@ def deterministic_match(
                     0.0,
                     expected,
                     relative_tolerance=relative_tolerance,
-                    absolute_tolerance=absolute_tolerance,
+                    absolute_tolerance=effective_absolute_tolerance,
                 )
                 and numbers_match(
                     0.0,
                     observed,
                     relative_tolerance=relative_tolerance,
-                    absolute_tolerance=absolute_tolerance,
+                    absolute_tolerance=effective_absolute_tolerance,
                 )
                 for expected, observed in matched_pairs
             )
@@ -333,6 +404,7 @@ def summarize_file(
             model_answer,
             relative_tolerance=relative_tolerance,
             absolute_tolerance=absolute_tolerance,
+            question=row.get("question"),
         ):
             deterministic_matches += 1
 
