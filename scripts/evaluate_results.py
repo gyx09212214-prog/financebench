@@ -404,7 +404,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--relative-tolerance",
         type=float,
-        default=0.01,
+        default=0.001,
         help="Relative tolerance for numeric deterministic matching.",
     )
     parser.add_argument(

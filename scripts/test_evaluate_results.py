@@ -5,7 +5,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from evaluate_results import deterministic_match, is_numeric_answer, looks_like_refusal
+from evaluate_results import (
+    deterministic_match,
+    is_numeric_answer,
+    looks_like_refusal,
+    parse_args,
+)
 
 
 class EvaluateResultsTest(unittest.TestCase):
@@ -95,6 +100,19 @@ class EvaluateResultsTest(unittest.TestCase):
                 "The final answer is 1.014%.",
                 relative_tolerance=0.01,
                 absolute_tolerance=1e-6,
+            )
+        )
+
+    def test_default_tolerance_rejects_distinct_rounded_percentages(self):
+        args = parse_args(["results.jsonl"])
+
+        self.assertEqual(args.relative_tolerance, 0.001)
+        self.assertFalse(
+            deterministic_match(
+                0.654,
+                "The final answer is 65.2%.",
+                relative_tolerance=args.relative_tolerance,
+                absolute_tolerance=args.absolute_tolerance,
             )
         )
 
