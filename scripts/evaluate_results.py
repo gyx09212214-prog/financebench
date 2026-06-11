@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-NUMBER_RE = re.compile(r"\(?[-+]?\$?\d[\d,]*(?:\.\d+)?%?\)?")
+NUMBER_RE = re.compile(r"(?<![A-Za-z_])\(?[-+]?\$?\d[\d,]*(?:\.\d+)?%?\)?(?![A-Za-z_])")
 NUMERIC_ANSWER_RE = re.compile(
     r"^\(?[-+]?\$?\d[\d,]*(?:\.\d+)?%?\)?"
     r"(?:\s*(?:usd|dollars?|millions?|billions?|shares?|bps|basis points))?$",

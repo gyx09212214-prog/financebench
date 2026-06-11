@@ -19,6 +19,16 @@ class EvaluateResultsTest(unittest.TestCase):
             )
         )
 
+    def test_numeric_answer_ignores_alphanumeric_identifiers(self):
+        self.assertTrue(
+            deterministic_match(
+                1577,
+                "For Q2 of FY2023, the capital expenditure amount for 3M is $1,577 million.",
+                relative_tolerance=0.01,
+                absolute_tolerance=1e-6,
+            )
+        )
+
     def test_numeric_answer_does_not_match_copied_filing_context(self):
         self.assertFalse(
             deterministic_match(
